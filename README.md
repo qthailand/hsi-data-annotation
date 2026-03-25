@@ -5,9 +5,11 @@ A desktop GUI application for annotating hyperspectral imaging (HSI) datacubes w
 ## Features
 
 - Load ENVI hyperspectral image files (`.hdr` format)
+- Build RGB preview from wavelength metadata using target channels R=645 nm, G=555 nm, B=465 nm
 - Paint pixels with customizable class labels and colors
 - View spectral reflectance curves at cursor position
 - Flood-fill connected regions
+- Adjust RGB contrast with configurable low/high percentile cuts for dark datacubes
 - Save ground truth masks as PNG or TIFF files
 
 ## Requirements
@@ -56,9 +58,24 @@ Saved masks are 8-bit grayscale images where each pixel value represents a class
 | `0` | Background / unannotated |
 | `1, 2, 3, …` | Class IDs assigned in the class manager |
 
+## Project Structure
+
+```text
+hsi_annotation/
+  app.py          # Application bootstrap
+  canvas.py       # Interactive canvas and drawing layer
+  data.py         # Datacube loading and mask/class conversions
+  ui/
+    class_table.py
+    paint_view.py
+    pg_panel.py
+    window.py     # Main window composition
+__main__.py       # Thin entry point
+```
+
 ## UI Layout
 
-```
+```text
 ┌─────────────────┬───────────────────┬──────────────────┐
 │  Annotation     │  Image Viewer     │  Class Manager   │
 │  Canvas         │  + Spectral Plot  │  (labels/colors) │
