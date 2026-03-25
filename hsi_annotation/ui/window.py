@@ -74,7 +74,7 @@ class PaintWindow(QMainWindow):
             action.setEnabled(True)
         self._contrast_action.setEnabled(True)
 
-    def _on_class_changed(self, name, color):
+    def _on_class_changed(self, class_id, name, color):
         active_color = QColor(color)
         active_color.setAlpha(220)
         self._canvas.set_pen_color(active_color)
@@ -215,7 +215,9 @@ class PaintWindow(QMainWindow):
             "⚠️  โปรดโหลด Hyperspectral Datacube (.hdr) ก่อน  │  Ctrl+O = เปิดไฟล์"
         )
         self._on_class_changed(
-            self._class_table.active_name(), self._class_table.active_color()
+            self._class_table.active_class_id(),
+            self._class_table.active_name(),
+            self._class_table.active_color(),
         )
 
     def update_zoom_label(self, zoom):
@@ -281,6 +283,12 @@ class PaintWindow(QMainWindow):
         if not self._canvas.is_loaded:
             QMessageBox.warning(self, "ยังไม่มีข้อมูล", "โหลด datacube ก่อนบันทึก")
             return
+
+        ok_ids, message = self._class_table.validate_class_ids()
+        if not ok_ids:
+            QMessageBox.warning(self, "ค่า Class ID ไม่ถูกต้อง", message)
+            return
+
         default_name = self._default_gt_filename()
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -295,7 +303,7 @@ class PaintWindow(QMainWindow):
         height, width = id_arr.shape
         out_img = QImage(id_arr.data, width, height, width, QImage.Format_Grayscale8).copy()
         ok = out_img.save(path)
-        n_classes = len(np.unique(id_arr)) - 1
+        n_classes = len([value for value in np.unique(id_arr) if value > 0])
         self.statusBar().showMessage(
             "{0}: {1}  │  {2} class(es)  │  pixel values = class ID (0=bg)".format(
                 "✅ บันทึกสำเร็จ" if ok else "❌ บันทึกไม่สำเร็จ",

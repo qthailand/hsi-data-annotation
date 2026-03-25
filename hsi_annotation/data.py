@@ -83,11 +83,11 @@ def extract_wavelengths(metadata):
 
 def compute_class_spectra(datacube, mask, classes, max_samples=300):
     if datacube is None:
-        return [(name, color, None) for name, color in classes]
+        return [(name, color, None) for _, name, color in classes]
 
     mask_arr = _qimage_to_rgba_array(mask)
     class_data = []
-    for name, color in classes:
+    for _, name, color in classes:
         match = _match_color(mask_arr, color)
         ys, xs = np.where(match)
         if len(ys) == 0:
@@ -119,7 +119,7 @@ def build_class_id_mask(mask, classes):
     height, width = mask_arr.shape[:2]
     id_arr = np.zeros((height, width), dtype=np.uint8)
 
-    for class_id, (_, color) in enumerate(classes, start=1):
+    for class_id, _, color in classes:
         id_arr[_match_color(mask_arr, color)] = class_id
 
     return np.ascontiguousarray(id_arr)
