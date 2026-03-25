@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QColor, QImage, QPixmap
@@ -279,10 +281,11 @@ class PaintWindow(QMainWindow):
         if not self._canvas.is_loaded:
             QMessageBox.warning(self, "ยังไม่มีข้อมูล", "โหลด datacube ก่อนบันทึก")
             return
+        default_name = self._default_gt_filename()
         path, _ = QFileDialog.getSaveFileName(
             self,
             "บันทึก Ground Truth Mask (Class ID)",
-            "gt_mask.png",
+            default_name,
             "PNG (*.png);;TIFF (*.tif *.tiff)",
         )
         if not path:
@@ -317,3 +320,24 @@ class PaintWindow(QMainWindow):
                 else "RGB fallback bands"
             )
         return "{0}  │  cut {1:.1f}-{2:.1f}%".format(wavelength_text, low_cut, high_cut)
+
+    def _default_gt_filename(self):
+        datacube = self._canvas.datacube
+        source_path = getattr(datacube, "filename", "") if datacube is not None else ""
+        source_name = os.path.basename(source_path)
+        if not source_name:
+            return "gt_mask.png"
+
+        name, ext = os.path.splitext(source_name)
+        if ext.lower() == ".hdr":
+            source_name = name
+
+        lower_name = source_name.lower()
+        for suffix in (".bip", ".bil", ".bsq"):
+            if lower_name.endswith(suffix):
+                source_name = source_name[: -len(suffix)]
+                break
+
+        if not source_name:
+            source_name = "gt_mask"
+        return "{0}.png".format(source_name)
