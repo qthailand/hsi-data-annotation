@@ -6,7 +6,9 @@ from PyQt5.QtGui import QImage
 
 
 RGB_BANDS = (29, 19, 9)
-RGB_TARGET_WAVELENGTHS = (645.0, 555.0, 465.0)
+RGB_TARGET_WAVELENGTHS_VIS = (645.0, 555.0, 465.0)
+RGB_TARGET_WAVELENGTHS_SWIR = (1500.0, 1300.0, 1100.0)
+RGB_TARGET_WAVELENGTHS = RGB_TARGET_WAVELENGTHS_VIS
 COLOR_TOLERANCE = 3
 DEFAULT_LOW_CUT = 2.0
 DEFAULT_HIGH_CUT = 98.0
@@ -16,7 +18,7 @@ def load_datacube_preview(
     path,
     low_cut=DEFAULT_LOW_CUT,
     high_cut=DEFAULT_HIGH_CUT,
-    target_wavelengths=RGB_TARGET_WAVELENGTHS,
+    target_wavelengths=None,
 ):
     datacube = spy.open_image(path)
     rgb, preview_info = build_rgb_preview(
@@ -31,12 +33,26 @@ def load_datacube_preview(
     return datacube, qimg.convertToFormat(QImage.Format_ARGB32).copy(), preview_info
 
 
+def _select_default_target_wavelengths(metadata):
+    wavelengths = extract_wavelengths(metadata)
+    if wavelengths is None or len(wavelengths) == 0:
+        return RGB_TARGET_WAVELENGTHS_VIS
+
+    # ถ้าคลื่นส่วนใหญ่เป็น SWIR สูงกว่า 1000 nm -> SWIR targets
+    if np.nanmean(wavelengths) > 1000.0 or np.nanmin(wavelengths) > 900.0:
+        return RGB_TARGET_WAVELENGTHS_SWIR
+
+    return RGB_TARGET_WAVELENGTHS_VIS
+
+
 def build_rgb_preview(
     datacube,
     low_cut=DEFAULT_LOW_CUT,
     high_cut=DEFAULT_HIGH_CUT,
-    target_wavelengths=RGB_TARGET_WAVELENGTHS,
+    target_wavelengths=None,
 ):
+    if target_wavelengths is None:
+        target_wavelengths = _select_default_target_wavelengths(datacube.metadata)
     band_indices, actual_wavelengths = select_rgb_bands(datacube, target_wavelengths)
     rgb = np.asarray(datacube.read_bands(list(band_indices)), dtype=np.float32)
     rgb = _percentile_stretch_rgb(rgb, low_cut, high_cut)
@@ -51,7 +67,10 @@ def build_rgb_preview(
     return rgb, preview_info
 
 
-def select_rgb_bands(datacube, target_wavelengths=RGB_TARGET_WAVELENGTHS):
+def select_rgb_bands(datacube, target_wavelengths=None):
+    if target_wavelengths is None:
+        target_wavelengths = _select_default_target_wavelengths(datacube.metadata)
+
     wavelengths = extract_wavelengths(datacube.metadata)
     if wavelengths is None or len(wavelengths) == 0:
         return RGB_BANDS, None

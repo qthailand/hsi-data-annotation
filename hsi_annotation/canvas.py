@@ -1,4 +1,5 @@
 import time
+import math
 from collections import deque
 
 import numpy as np
@@ -50,6 +51,9 @@ class CanvasItem(QGraphicsPixmapItem):
         self._preview_low_cut = DEFAULT_LOW_CUT
         self._preview_high_cut = DEFAULT_HIGH_CUT
         self._preview_info = None
+        self._circle_center = None
+        self._circle_radius = 0
+        self._circle_base_mask = None
         self._init_mask(800, 600)
         self.setZValue(1)
         self.setOpacity(0.75)
@@ -159,6 +163,13 @@ class CanvasItem(QGraphicsPixmapItem):
             elif self._tool == "connect":
                 self._connect_click(event.pos())
                 self._emit_spectrum(event.pos(), force=True)
+            elif self._tool == "circle":
+                self._drawing = True
+                self._circle_center = event.pos()
+                self._circle_radius = 0
+                self._circle_base_mask = self._mask.copy()
+                self._draw_circle_preview(0)
+                self._emit_spectrum(event.pos(), force=True)
             else:
                 self._drawing = True
                 self._last_pos = event.pos()
@@ -168,7 +179,17 @@ class CanvasItem(QGraphicsPixmapItem):
             self._close_connect_path()
 
     def mouseMoveEvent(self, event):
-        if not self._is_loaded or self._tool in ("fill", "connect"):
+        if not self._is_loaded:
+            return
+        if self._tool == "circle":
+            if self._drawing and (event.buttons() & Qt.LeftButton):
+                dx = event.pos().x() - self._circle_center.x()
+                dy = event.pos().y() - self._circle_center.y()
+                radius = int(math.hypot(dx, dy))
+                self._circle_radius = radius
+                self._draw_circle_preview(radius)
+            return
+        if self._tool in ("fill", "connect"):
             return
         if self._drawing and (event.buttons() & Qt.LeftButton):
             self._draw_line(self._last_pos, event.pos())
@@ -178,6 +199,15 @@ class CanvasItem(QGraphicsPixmapItem):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self._tool in ("pen", "eraser"):
             self._drawing = False
+            self.signals.updated.emit()
+        elif event.button() == Qt.LeftButton and self._tool == "circle":
+            if self._drawing:
+                # commit the last preview circle
+                self._paint_circle(self._circle_center, self._circle_radius, base_mask=self._circle_base_mask)
+            self._drawing = False
+            self._circle_center = None
+            self._circle_radius = 0
+            self._circle_base_mask = None
             self.signals.updated.emit()
 
     def _make_pen(self):
@@ -214,6 +244,26 @@ class CanvasItem(QGraphicsPixmapItem):
 
     def _draw_line(self, p1, p2):
         self._paint_on_mask(lambda painter: painter.drawLine(p1, p2))
+
+    def _paint_circle(self, center, radius, base_mask=None):
+        if center is None or radius <= 0:
+            return
+        mask = (base_mask.copy() if base_mask is not None else self._mask.copy())
+        painter = QPainter(mask)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        color = QColor(self._pen_color)
+        color.setAlpha(220)
+        painter.setBrush(QBrush(color))
+        painter.drawEllipse(center, radius, radius)
+        painter.end()
+        self._mask = mask
+        self.setPixmap(QPixmap.fromImage(self._mask))
+
+    def _draw_circle_preview(self, radius):
+        if self._circle_center is None or self._circle_base_mask is None:
+            return
+        self._paint_circle(self._circle_center, radius, base_mask=self._circle_base_mask)
 
     def _connect_click(self, pos):
         if self._connect_last is None:

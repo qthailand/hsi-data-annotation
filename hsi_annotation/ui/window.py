@@ -128,11 +128,18 @@ class PaintWindow(QMainWindow):
         act_connect.triggered.connect(lambda: self._set_tool("connect"))
         toolbar.addAction(act_connect)
 
+        act_circle = QAction("⭕ วงกลม", self)
+        act_circle.setCheckable(True)
+        act_circle.setShortcut("C")
+        act_circle.triggered.connect(lambda: self._set_tool("circle"))
+        toolbar.addAction(act_circle)
+
         self._tool_actions = {
             "pen": act_pen,
             "eraser": act_eraser,
             "fill": act_fill,
             "connect": act_connect,
+            "circle": act_circle,
         }
         toolbar.addSeparator()
 

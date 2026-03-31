@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -14,12 +15,20 @@ from PyQt5.QtWidgets import (
 )
 
 
+def _jet_color(value):
+    value = max(0.0, min(1.0, float(value)))
+    red = max(0.0, min(1.0, 1.5 - abs(4.0 * value - 3.0)))
+    green = max(0.0, min(1.0, 1.5 - abs(4.0 * value - 2.0)))
+    blue = max(0.0, min(1.0, 1.5 - abs(4.0 * value - 1.0)))
+    return QColor(int(round(red * 255)), int(round(green * 255)), int(round(blue * 255)))
+
+
 class ClassTable(QWidget):
     class_changed = pyqtSignal(int, str, QColor)
 
     _DEFAULTS = [
-        (1, "Class 1", QColor(231, 76, 60)),
-        (2, "Class 2", QColor(46, 204, 113)),
+        (1, "Class 1", _jet_color(0.12)),
+        (2, "Class 2", _jet_color(0.88)),
     ]
 
     def __init__(self, parent=None):
@@ -115,6 +124,13 @@ class ClassTable(QWidget):
         old_color = button.property("_color") or QColor(Qt.red)
         color = QColorDialog.getColor(old_color, self, "เลือกสีคลาส")
         if color.isValid():
+            if self._color_is_used_elsewhere(color, row):
+                QMessageBox.warning(
+                    self,
+                    "สีซ้ำ",
+                    "สีนี้ถูกใช้แล้วโดย class อื่น กรุณาเลือกสีที่ไม่ซ้ำ",
+                )
+                return
             button.setStyleSheet(
                 "background:{0}; border:1px solid #555; border-radius:3px;".format(color.name())
             )
@@ -124,8 +140,8 @@ class ClassTable(QWidget):
 
     def _add_row(self):
         row = self._table.rowCount()
-        _, _, color = self._DEFAULTS[row % len(self._DEFAULTS)]
         class_id = self._next_available_id()
+        color = self._next_unique_jet_color()
         self._insert_row(class_id, "Class {0}".format(row + 1), color)
         self._table.selectRow(row)
 
@@ -158,6 +174,42 @@ class ClassTable(QWidget):
         while candidate in used:
             candidate += 1
         return candidate
+
+    def _next_unique_jet_color(self):
+        used_colors = {
+            self._color_key(self._row_color(row)) for row in range(self._table.rowCount())
+        }
+        sample_count = max(8, self._table.rowCount() + 1)
+        for offset in range(sample_count):
+            sample_index = (offset + self._table.rowCount()) % sample_count
+            if sample_count > 1:
+                fraction = sample_index / float(sample_count - 1)
+            else:
+                fraction = 0.0
+            color = _jet_color(fraction)
+            if self._color_key(color) not in used_colors:
+                return color
+
+        return _jet_color((self._table.rowCount() % 256) / 255.0)
+
+    def _row_color(self, row):
+        button = self._table.cellWidget(row, 2)
+        if button is None:
+            return QColor(Qt.red)
+        color = button.property("_color")
+        return QColor(color) if isinstance(color, QColor) else QColor(Qt.red)
+
+    def _color_key(self, color):
+        return (color.red(), color.green(), color.blue(), color.alpha())
+
+    def _color_is_used_elsewhere(self, color, row_to_ignore):
+        key = self._color_key(color)
+        for row in range(self._table.rowCount()):
+            if row == row_to_ignore:
+                continue
+            if self._color_key(self._row_color(row)) == key:
+                return True
+        return False
 
     def _normalize_id_item(self, item):
         text = (item.text() or "").strip()
