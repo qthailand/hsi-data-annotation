@@ -100,36 +100,46 @@ def extract_wavelengths(metadata):
     return wavelengths
 
 
-def compute_class_spectra(datacube, mask, classes, max_samples=300):
+def compute_class_spectra(datacube, mask, classes, max_samples=300, progress_callback=None):
+    if progress_callback is not None:
+        progress_callback(0.0)
+
     if datacube is None:
+        if progress_callback is not None:
+            progress_callback(1.0)
         return [(name, color, None) for _, name, color in classes]
 
     mask_arr = _qimage_to_rgba_array(mask)
     class_data = []
+
     for _, name, color in classes:
         match = _match_color(mask_arr, color)
         ys, xs = np.where(match)
         if len(ys) == 0:
             class_data.append((name, color, None))
-            continue
-        if len(ys) > max_samples:
-            idx = np.random.choice(len(ys), max_samples, replace=False)
-            ys, xs = ys[idx], xs[idx]
-        valid = (xs < datacube.ncols) & (ys < datacube.nrows)
-        ys, xs = ys[valid], xs[valid]
-        if len(ys) == 0:
-            class_data.append((name, color, None))
-            continue
-        try:
-            spectra = np.array(
-                [
-                    np.array(datacube[int(y), int(x), :], dtype=np.float32).flatten()
-                    for y, x in zip(ys, xs)
-                ]
-            )
-            class_data.append((name, color, spectra.mean(axis=0)))
-        except Exception:
-            class_data.append((name, color, None))
+        else:
+            if len(ys) > max_samples:
+                idx = np.random.choice(len(ys), max_samples, replace=False)
+                ys, xs = ys[idx], xs[idx]
+            valid = (xs < datacube.ncols) & (ys < datacube.nrows)
+            ys, xs = ys[valid], xs[valid]
+            if len(ys) == 0:
+                class_data.append((name, color, None))
+            else:
+                try:
+                    spectra = np.array(
+                        [
+                            np.array(datacube[int(y), int(x), :], dtype=np.float32).flatten()
+                            for y, x in zip(ys, xs)
+                        ]
+                    )
+                    class_data.append((name, color, spectra.mean(axis=0)))
+                except Exception:
+                    class_data.append((name, color, None))
+
+    if progress_callback is not None:
+        progress_callback(1.0)
+
     return class_data
 
 

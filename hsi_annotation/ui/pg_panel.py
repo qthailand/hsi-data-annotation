@@ -55,6 +55,11 @@ class PgPanel(QWidget):
         self._spec_lbl.setStyleSheet("font-size:10px; color:#888; padding:2px;")
         layout.addWidget(self._spec_lbl)
 
+        self._progress_lbl = QLabel("คลิกบน canvas เพื่อดู spectrum")
+        self._progress_lbl.setAlignment(Qt.AlignCenter)
+        self._progress_lbl.setStyleSheet("font-size:10px; color:#a0a0a0; padding:2px;")
+        layout.addWidget(self._progress_lbl)
+
     def update_from_mask(self, mask):
         arr = self._to_np(mask)
         self._img_view.setImage(
@@ -73,7 +78,14 @@ class PgPanel(QWidget):
             )
         )
 
+    def set_spectrum_status(self, text):
+        self._progress_lbl.setText(text)
+
+    def reset_spectrum_status(self):
+        self._progress_lbl.setText("คลิกบน canvas เพื่อดู spectrum")
+
     def update_class_spectra(self, class_data):
+        self.reset_spectrum_status()
         for curve in self._class_curves.values():
             self._spec_plot.removeItem(curve)
         self._class_curves.clear()

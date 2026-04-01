@@ -1,7 +1,7 @@
 import os
 
 import numpy as np
-from PyQt5.QtCore import QRectF, Qt
+from PyQt5.QtCore import QObject, QThread, QRectF, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QAction,
@@ -20,12 +20,31 @@ from PyQt5.QtWidgets import (
 from ..canvas import BgItem, CanvasItem
 from ..data import DEFAULT_HIGH_CUT, DEFAULT_LOW_CUT, build_class_id_mask, compute_class_spectra
 from .class_table import ClassTable
+
+
+class ClassSpectrumWorker(QObject):
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+    @pyqtSlot(object, object, object)
+    def process(self, datacube, mask, classes):
+        try:
+            class_data = compute_class_spectra(
+                datacube,
+                mask,
+                classes,
+            )
+            self.finished.emit(class_data)
+        except Exception as e:
+            self.error.emit(str(e))
 from .contrast_dialog import ContrastDialog
 from .paint_view import PaintView
 from .pg_panel import PgPanel
 
 
 class PaintWindow(QMainWindow):
+    class_spectra_request = pyqtSignal(object, object, object)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HSI Ground Truth Painter")
@@ -61,6 +80,17 @@ class PaintWindow(QMainWindow):
         self._canvas.signals.loaded.connect(self._on_loaded)
         self._class_table.class_changed.connect(self._on_class_changed)
 
+        self._class_spectra_running = False
+        self._class_spectra_pending = False
+
+        self._spectrum_thread = QThread(self)
+        self._spectrum_worker = ClassSpectrumWorker()
+        self._spectrum_worker.moveToThread(self._spectrum_thread)
+        self._spectrum_worker.finished.connect(self._on_class_spectra_ready)
+        self._spectrum_worker.error.connect(self._on_class_spectra_error)
+        self.class_spectra_request.connect(self._spectrum_worker.process)
+        self._spectrum_thread.start()
+
     def _on_loaded(self, ncols, nrows, nbands):
         preview = self._format_preview_info()
         self.statusBar().showMessage(
@@ -93,12 +123,28 @@ class PaintWindow(QMainWindow):
     def _compute_class_spectra(self):
         if self._canvas.datacube is None or self._canvas.is_drawing:
             return
-        class_data = compute_class_spectra(
+        if self._class_spectra_running:
+            self._class_spectra_pending = True
+            return
+
+        self._class_spectra_running = True
+        self._class_spectra_pending = False
+        self._pg_panel.set_spectrum_status("Computing class spectra...")
+        self.class_spectra_request.emit(
             self._canvas.datacube,
             self._canvas.get_mask(),
             self._class_table.get_all(),
         )
+
+    def _on_class_spectra_ready(self, class_data):
+        self._class_spectra_running = False
         self._pg_panel.update_class_spectra(class_data)
+        if self._class_spectra_pending:
+            self._compute_class_spectra()
+
+    def _on_class_spectra_error(self, message):
+        self._class_spectra_running = False
+        self.statusBar().showMessage(f"Spectra thread error: {message}", 5000)
 
     def _build_toolbar(self):
         toolbar = QToolBar("Tools", self)
@@ -335,6 +381,11 @@ class PaintWindow(QMainWindow):
                 else "RGB fallback bands"
             )
         return "{0}  │  cut {1:.1f}-{2:.1f}%".format(wavelength_text, low_cut, high_cut)
+
+    def closeEvent(self, event):
+        self._spectrum_thread.quit()
+        self._spectrum_thread.wait(2000)
+        super().closeEvent(event)
 
     def _default_gt_filename(self):
         datacube = self._canvas.datacube
